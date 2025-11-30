@@ -9,8 +9,30 @@ import time
 # Create a Blueprint for the API
 api = Blueprint('api', __name__)
 
+# User Related Endpoints
 
-# the authentication endpoint
+# --- Registration Endpoint ---
+
+@api.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    username = data.get('username')
+    password_hash = data.get('password_hash')
+    # Optionally: email = data.get('email')
+
+    if not username or not password_hash:
+        return jsonify({"status": "error", "message": "Username and password required."}), 400
+
+    if UserProfile.query.filter_by(Username=username).first():
+        return jsonify({"status": "error", "message": "Username already exists."}), 400
+
+    user = UserProfile(Username=username, Password_Hash=password_hash)
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({"status": "success", "message": "User registered."}), 201
+
+
+# --- Login Endpoint ---
 
 FAILED_LOGIN_ATTEMPTS = defaultdict(int)
 LOCKOUT_INFO = defaultdict(lambda: {"count": 0, "until": 0})
@@ -57,7 +79,8 @@ def login():
     LOCKOUT_INFO[username] = {"count": 0, "until": 0}
     access_token = create_access_token(identity=user.User_ID)
     return jsonify({"status": "success", "access_token": access_token}), 200
-    
+
+
 
 # --- Profile Endpoint ---
 @api.route('/Profile_Endpoint', methods=['GET', 'POST', 'PUT', 'DELETE'])
@@ -101,6 +124,8 @@ def profile_endpoint():
         db.session.delete(user)
         db.session.commit()
         return jsonify({"status": "success", "message": "Profile deleted"})
+
+# Machine related endpoints
 
 # --- List All Machines ---
 @api.route('/machines', methods=['GET'])
@@ -157,7 +182,10 @@ def get_latest_metrics(hostname):
         "Current_Disk_Usage": json.loads(metric.Current_Disk_Usage)
     })
 
-# --- Dashboard View Endpoint (as previously provided) ---
+
+# Dashboard related endpoints
+
+# --- Dashboard View Endpoint ---
 @api.route('/Dashboard_View_Endpoint', methods=['GET', 'POST', 'PUT'])
 @jwt_required()
 def dashboard_view_endpoint():
