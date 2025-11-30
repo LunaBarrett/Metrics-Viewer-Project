@@ -6,6 +6,11 @@ import requests
 import subprocess
 import platform
 import os
+from datetime import datetime
+
+# Set your endpoints (adjust as needed)
+REGISTER_ENDPOINT = os.getenv("REGISTER_MACHINE_ENDPOINT", "http://localhost:5000/api/register_machine")
+METRICS_ENDPOINT = os.getenv("METRICS_ENDPOINT", "http://localhost:5000/api/metrics")
 
 # gathering the name
 
@@ -90,13 +95,37 @@ def get_vm_list():
     
 # sending the metrics
 
-API_ENDPOINT = "flask server url"
-
-def send_metrics(metrics):
+def register_machine():
+    running_on_hv = is_hypervisor()
+    payload = {
+        "hostname": get_hostname(),
+        "platform": platform.platform(),
+        "is_hypervisor": running_on_hv,
+        "max_cores": get_max_cores(),
+        "max_memory": get_max_memory(),
+        "max_disk": get_max_disk(),
+        "vm_list": get_vm_list() if running_on_hv else []
+    }
     headers = {'Content-Type': 'application/json'}
     try:
-        response = requests.post(API_ENDPOINT, headers=headers, data=json.dumps(metrics))
-        print(f"Sent metrics, server responded with: {response.status_code}")
+        response = requests.post(REGISTER_ENDPOINT, headers=headers, data=json.dumps(payload))
+        print(f"Register machine: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"Failed to register machine: {e}")
+
+
+def send_metrics():
+    payload = {
+        "hostname": get_hostname(),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "current_cpu_usage": get_current_cpu_usage(),
+        "current_memory_usage": get_current_memory_usage(),
+        "current_disk_usage": get_current_disk_usage()
+    }
+    headers = {'Content-Type': 'application/json'}
+    try:
+        response = requests.post(METRICS_ENDPOINT, headers=headers, data=json.dumps(payload))
+        print(f"Sent metrics: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"Failed to send metrics: {e}")
 
@@ -120,6 +149,7 @@ def main():
 # only runs if called directly
 
 if __name__ == "__main__":
+    register_machine()  # Register once at startup
     while True:
-        main()
-        time.sleep(1)
+        send_metrics()
+        time.sleep(1)  # Send metrics every 1 second (adjust as needed)
