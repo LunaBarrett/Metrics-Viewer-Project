@@ -12,10 +12,10 @@ def create_app():
     JWTManager(app)
 
     # Register blueprints
-    from back_end.API.Front_End_API import api_blueprint
+    from back_end.API.Front_End_API import api
     from back_end.API.Metrics_Gathering_API import metrics_api
 
-    app.register_blueprint(api_blueprint)
+    app.register_blueprint(api)
     app.register_blueprint(metrics_api)
 
     # Create tables if they don't exist

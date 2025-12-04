@@ -13,7 +13,7 @@ api = Blueprint('api', __name__)
 
 # --- Registration Endpoint ---
 
-@api.route('/register', methods=['POST'])
+@api.route('/front_end/register', methods=['POST'])
 def register():
     data = request.get_json()
     username = data.get('username')
@@ -38,7 +38,7 @@ FAILED_LOGIN_ATTEMPTS = defaultdict(int)
 LOCKOUT_INFO = defaultdict(lambda: {"count": 0, "until": 0})
 LOCKOUT_PERIODS = [60, 120, 300, 900]  # seconds: 1min, 2min, 5min, 15min
 
-@api.route('/login', methods=['POST'])
+@api.route('/front_end/login', methods=['POST'])
 def login():
     data = request.get_json()
     username = data.get('username')
@@ -83,7 +83,7 @@ def login():
 
 
 # --- Profile Endpoint ---
-@api.route('/Profile_Endpoint', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@api.route('/front_end/profile', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @jwt_required()
 def profile_endpoint():
     user_id = get_jwt_identity()
@@ -128,7 +128,7 @@ def profile_endpoint():
 # Machine related endpoints
 
 # --- List All Machines ---
-@api.route('/machines', methods=['GET'])
+@api.route('/front_end/machines', methods=['GET'])
 @jwt_required()
 def list_machines():
     machines = MachineDetail.query.all()
@@ -147,7 +147,7 @@ def list_machines():
     ])
 
 # --- Get Machine Info ---
-@api.route('/machine/<hostname>', methods=['GET'])
+@api.route('/front_end/machine/<hostname>', methods=['GET'])
 @jwt_required()
 def get_machine_info(hostname):
     machine = MachineDetail.query.filter_by(Hostname=hostname).first()
@@ -166,7 +166,7 @@ def get_machine_info(hostname):
     })
 
 # --- Get Latest Metrics for a Machine ---
-@api.route('/machine/<hostname>/metrics', methods=['GET'])
+@api.route('/front_end/machine/<hostname>/metrics', methods=['GET'])
 @jwt_required()
 def get_latest_metrics(hostname):
     machine = MachineDetail.query.filter_by(Hostname=hostname).first()
@@ -186,7 +186,7 @@ def get_latest_metrics(hostname):
 # Dashboard related endpoints
 
 # --- Dashboard View Endpoint ---
-@api.route('/Dashboard_View_Endpoint', methods=['GET', 'POST', 'PUT'])
+@api.route('/front_end/dashboard', methods=['GET', 'POST', 'PUT'])
 @jwt_required()
 def dashboard_view_endpoint():
     user_id = get_jwt_identity()
