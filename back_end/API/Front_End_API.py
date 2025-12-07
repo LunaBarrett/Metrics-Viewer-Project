@@ -1,7 +1,8 @@
 # the purpose of this file is to act as an API for everything going to and coming from the front end of the application
 
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
+from functools import wraps
 from back_end.database.models import db, UserProfile, MachineDetail, SavedDashboard, MachineMetric
 from collections import defaultdict
 import bcrypt
@@ -9,6 +10,17 @@ import time
 
 # Create a Blueprint for the API
 front_end_api = Blueprint('front_end_api', __name__)
+
+# Create an admin required decorator
+def admin_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        verify_jwt_in_request()
+        claims = get_jwt()
+        if not claims.get("admin"):
+            return jsonify({"status": "error", "message": "Admin access required."}), 403
+        return fn(*args, **kwargs)
+    return wrapper
 
 # User Related Endpoints
 
@@ -83,7 +95,10 @@ def login():
     # Successful login: reset counters
     FAILED_LOGIN_ATTEMPTS[username] = 0
     LOCKOUT_INFO[username] = {"count": 0, "until": 0}
-    access_token = create_access_token(identity=user.User_ID)
+    access_token = create_access_token(
+        identity=user.User_ID,
+        additional_claims={"admin": user.Admin_Status}
+    )
     return jsonify({"status": "success", "access_token": access_token}), 200
 
 
@@ -144,13 +159,57 @@ def profile_endpoint():
         db.session.delete(user)
         db.session.commit()
         return jsonify({"status": "success", "message": "Profile deleted"})
+    
+# Admin Endpoints
+
+# --- List All Users ---
+
+@front_end_api.route('/api/front_end/admin/users', methods=['GET'])
+@admin_required
+def list_all_users():
+    """
+    Admin-only endpoint to list all users and their admin status.
+    """
+    users = UserProfile.query.all()
+    user_list = [
+        {
+            "User_ID": user.User_ID,
+            "Username": user.Username,
+            "Admin_Status": user.Admin_Status
+        }
+        for user in users
+    ]
+    return jsonify({"status": "success", "users": user_list})
+
+# --- Admin user deletion ---
+
+@front_end_api.route('/api/front_end/admin/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_user(user_id):
+    """
+    Admin-only endpoint to delete any user account by user_id.
+    """
+    user = UserProfile.query.get(user_id)
+    if not user:
+        return jsonify({"status": "error", "message": "User not found"}), 404
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"status": "success", "message": f"User '{user.Username}' deleted."}), 200
 # Machine related endpoints
 
 # --- List All Machines ---
 @front_end_api.route('/api/front_end/machines/list', methods=['GET'])
 @jwt_required()
 def list_machines():
-    machines = MachineDetail.query.all()
+    claims = get_jwt()
+    user_id = get_jwt_identity()
+    if claims.get("admin"):
+        # Admin: return all machines
+        machines = MachineDetail.query.all()
+    else:
+        # Regular user: return only their machines
+        machines = MachineDetail.query.filter_by(Owner_ID=user_id).all()
     return jsonify([
         {
             "Machine_ID": m.Machine_ID,
