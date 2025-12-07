@@ -5,7 +5,7 @@ from back_end.database.models import db, MachineDetail, MachineMetric
 
 metrics_api = Blueprint('metrics_api', __name__)
 
-@metrics_api.route('/gathering/register_machine', methods=['POST'])
+@metrics_api.route('/api/gathering/register_machine', methods=['POST'])
 def register_machine():
     data = request.get_json()
     hostname = data.get('hostname')
@@ -41,7 +41,7 @@ def register_machine():
 
     return jsonify({"status": "success", "message": "Machine registered/updated"}), 201
 
-@metrics_api.route('/gathering/metrics', methods=['POST'])
+@metrics_api.route('/api/gathering/metrics', methods=['POST'])
 def receive_metrics():
     data = request.get_json()
     hostname = data.get('hostname')
