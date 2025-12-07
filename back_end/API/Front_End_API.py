@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from back_end.database.models import db, UserProfile, MachineDetail, SavedDashboard, MachineMetric
 from collections import defaultdict
+import bcrypt
 import time
 
 # Create a Blueprint for the API
@@ -40,9 +41,13 @@ LOCKOUT_PERIODS = [60, 120, 300, 900]  # seconds: 1min, 2min, 5min, 15min
 
 @api.route('/api/front_end/user/login', methods=['POST'])
 def login():
+    """
+    Authenticates a user, issues a JWT, and enforces progressive lockout on repeated failures.
+    Expects JSON: { "username": "...", "password": "..." }
+    """
     data = request.get_json()
     username = data.get('username')
-    password_hash = data.get('password_hash')
+    password = data.get('password')  # Expect plain password from frontend
     now = time.time()
 
     lockout = LOCKOUT_INFO[username]
@@ -54,8 +59,9 @@ def login():
             "message": f"Account locked. Try again in {remaining} seconds."
         }), 403
 
-    user = UserProfile.query.filter_by(Username=username, Password_Hash=password_hash).first()
-    if not user:
+    user = UserProfile.query.filter_by(Username=username).first()
+    # Check user exists and password is correct
+    if not user or not bcrypt.checkpw(password.encode('utf-8'), user.Password_Hash.encode('utf-8')):
         FAILED_LOGIN_ATTEMPTS[username] += 1
         if FAILED_LOGIN_ATTEMPTS[username] >= 3:
             # Progressive lockout: increase lockout period each time
@@ -86,12 +92,20 @@ def login():
 @api.route('/api/front_end/user/profile', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @jwt_required()
 def profile_endpoint():
+    """
+    Handles user profile actions:
+    - GET: Retrieve profile info
+    - POST: Change username
+    - PUT: Change password (securely hashed)
+    - DELETE: Delete profile
+    """
     user_id = get_jwt_identity()
     user = UserProfile.query.get(user_id)
     if not user:
         return jsonify({"status": "error", "message": "User not found"}), 404
 
     if request.method == 'GET':
+        # Return profile info
         return jsonify({
             "status": "success",
             "data": {
@@ -102,29 +116,34 @@ def profile_endpoint():
         })
 
     elif request.method == 'POST':
+        # Change username
         data = request.get_json()
         new_username = data.get('username')
         if new_username:
             if UserProfile.query.filter_by(Username=new_username).first():
                 return jsonify({"status": "error", "message": "Username already exists"}), 400
             user.Username = new_username
-        db.session.commit()
-        return jsonify({"status": "success", "message": "Profile updated"})
+            db.session.commit()
+            return jsonify({"status": "success", "message": "Username updated"})
+        return jsonify({"status": "error", "message": "No username provided"}), 400
 
     elif request.method == 'PUT':
+        # Change password (hash securely)
         data = request.get_json()
-        new_password_hash = data.get('password_hash')
-        if new_password_hash:
+        new_password = data.get('password')  # Expect plain password from frontend
+        if new_password:
+            import bcrypt  # Ensure bcrypt is imported at the top of your file
+            new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
             user.Password_Hash = new_password_hash
             db.session.commit()
             return jsonify({"status": "success", "message": "Password updated"})
         return jsonify({"status": "error", "message": "No password provided"}), 400
 
     elif request.method == 'DELETE':
+        # Delete profile
         db.session.delete(user)
         db.session.commit()
         return jsonify({"status": "success", "message": "Profile deleted"})
-
 # Machine related endpoints
 
 # --- List All Machines ---
