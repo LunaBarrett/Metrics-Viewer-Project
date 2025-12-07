@@ -45,7 +45,7 @@ def setup_logging(
 # --- Blueprint for Frontend/Agent Logging ---
 logging_api = Blueprint('logging_api', __name__)
 
-@logging_api.route('/api/frontend-log', methods=['POST'])
+@logging_api.route('/api/logging/frontend_log', methods=['POST'])
 def frontend_log():
     """
     Receives log messages from agents or the frontend and writes them to the backend log.
