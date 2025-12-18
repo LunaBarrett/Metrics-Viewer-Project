@@ -29,9 +29,8 @@ def create_app():
     app.register_blueprint(metrics_api)
     app.register_blueprint(logging_api)
 
-    # Create tables if they don't exist
-    @app.before_first_request
-    def create_tables():
+    # Create tables immediately after app is created (Flask 3.x compatible)
+    with app.app_context():
         db.create_all()
 
     return app
