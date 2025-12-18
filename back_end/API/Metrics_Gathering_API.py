@@ -45,10 +45,23 @@ def register_machine():
 def receive_metrics():
     data = request.get_json()
     hostname = data.get('hostname')
-    timestamp = data.get('timestamp', datetime.utcnow().isoformat() + "Z")
+    timestamp_str = data.get('timestamp')
     current_cpu_usage = data.get('current_cpu_usage')
     current_memory_usage = data.get('current_memory_usage')
     current_disk_usage = data.get('current_disk_usage')
+
+    # Convert timestamp string to a Python datetime object
+    if timestamp_str:
+        try:
+            # Handle both with and without 'Z'
+            if timestamp_str.endswith('Z'):
+                timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            else:
+                timestamp = datetime.fromisoformat(timestamp_str)
+        except Exception:
+            timestamp = datetime.utcnow()
+    else:
+        timestamp = datetime.utcnow()
 
     machine = MachineDetail.query.filter_by(Hostname=hostname).first()
     if not machine:

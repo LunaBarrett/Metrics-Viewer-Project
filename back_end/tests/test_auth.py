@@ -14,14 +14,15 @@ def test_register_and_login(client):
     # Register a new user
     response = client.post('/api/front_end/user/register', json={
         'username': 'testuser',
-        'password_hash': 'testpass'
+        'password': 'testpass'
     })
     assert response.status_code == 201
 
     # Login with the new user
     response = client.post('/api/front_end/user/login', json={
         'username': 'testuser',
-        'password_hash': 'testpass'
+        'password': 'testpass'
     })
     assert response.status_code == 200
     assert 'access_token' in response.get_json()
+    
