@@ -1,4 +1,4 @@
-import metrics_agent
+from metrics_gathering import metrics_agent
 
 def test_payload_format():
     """Test that the metrics payload has the correct structure."""

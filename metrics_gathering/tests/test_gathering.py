@@ -1,4 +1,4 @@
-import metrics_agent
+from metrics_gathering import metrics_agent
 
 def test_get_current_cpu_usage():
     """Test that CPU usage is a number between 0 and 100."""
