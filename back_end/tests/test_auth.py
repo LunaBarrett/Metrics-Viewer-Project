@@ -3,7 +3,6 @@ from back_end.app.app import create_app
 
 @pytest.fixture
 def client():
-    """Fixture to provide a test client for the Flask app."""
     app = create_app()
     app.config['TESTING'] = True
     with app.test_client() as client:
@@ -11,6 +10,14 @@ def client():
 
 def test_register_and_login(client):
     """Test user registration and login endpoints."""
+    from back_end.database.models import db, UserProfile
+    # Clean up any existing user with this username
+    with client.application.app_context():
+        user = UserProfile.query.filter_by(Username='testuser').first()
+        if user:
+            db.session.delete(user)
+            db.session.commit()
+
     # Register a new user
     response = client.post('/api/front_end/user/register', json={
         'username': 'testuser',
