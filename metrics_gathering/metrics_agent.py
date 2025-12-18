@@ -21,9 +21,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-API_ENDPOINT = os.getenv("METRICS_API_ENDPOINT", "http://localhost:5000/api/metrics")
-REGISTER_ENDPOINT = os.getenv("REGISTER_MACHINE_ENDPOINT", "http://localhost:5000/api/register_machine")
-LOGGING_API_ENDPOINT = os.getenv("LOGGING_API_ENDPOINT", "http://localhost:5000/api/frontend-log")  # Backend logging API
+API_ENDPOINT = os.getenv("METRICS_API_ENDPOINT", "http://localhost:5000/api/gathering/metrics")
+REGISTER_ENDPOINT = os.getenv("REGISTER_MACHINE_ENDPOINT", "http://localhost:5000/api/gathering/register_machine")
+LOGGING_API_ENDPOINT = os.getenv("LOGGING_API_ENDPOINT", "http://localhost:5000/api/logging/frontend_log")  # Backend logging API
 
 def get_hostname():
     return socket.gethostname()

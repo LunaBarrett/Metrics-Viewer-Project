@@ -14,9 +14,9 @@ DURATION_SECONDS = 60        # Only used if FOREVER is False
 NUM_HVS = 10                 # Number of hypervisors to simulate
 VMS_PER_HV = 5               # Number of VMs per hypervisor
 
-REGISTER_ENDPOINT = "http://localhost:5000/api/register_machine"
-METRICS_ENDPOINT = "http://localhost:5000/api/metrics"
-LOGGING_API_ENDPOINT = "http://localhost:5000/api/frontend-log"  # Backend logging API endpoint
+REGISTER_ENDPOINT = "http://localhost:5000/api/gathering/register_machine"
+METRICS_ENDPOINT = "http://localhost:5000/api/gathering/metrics"
+LOGGING_API_ENDPOINT = "http://localhost:5000/api/logging/frontend_log"  # Backend logging API endpoint
 
 # --- Logging Setup ---
 # Ensure logs directory exists
