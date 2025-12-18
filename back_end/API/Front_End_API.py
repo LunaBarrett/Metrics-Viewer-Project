@@ -30,20 +30,21 @@ def admin_required(fn):
 def register():
     data = request.get_json()
     username = data.get('username')
-    password_hash = data.get('password_hash')
-    # Optionally: email = data.get('email')
+    password = data.get('password')  # Expect plain password from frontend
 
-    if not username or not password_hash:
+    if not username or not password:
         return jsonify({"status": "error", "message": "Username and password required."}), 400
 
     if UserProfile.query.filter_by(Username=username).first():
         return jsonify({"status": "error", "message": "Username already exists."}), 400
 
+    # Hash the password securely using bcrypt
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
     user = UserProfile(Username=username, Password_Hash=password_hash)
     db.session.add(user)
     db.session.commit()
     return jsonify({"status": "success", "message": "User registered."}), 201
-
 
 # --- Login Endpoint ---
 
