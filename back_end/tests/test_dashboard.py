@@ -11,5 +11,5 @@ def client():
 
 def test_dashboard_view_requires_auth(client):
     """Test that dashboard view endpoint requires authentication."""
-    response = client.get('api/front_end/dashboard')
+    response = client.get('/api/front_end/dashboard')
     assert response.status_code == 401  # Not authenticated

@@ -1,38 +1,57 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, LogOut } from 'lucide-react'
 import DashboardHeader from '@/components/dashboard-header'
 import { DeleteConfirmModal } from '@/components/delete-confirm-modal'
+import { authApi, machineApi, removeToken, type UserProfile, type MachineDetail } from '@/lib/api'
 
 export default function AccountPage() {
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [isOwnedDropdownOpen, setIsOwnedDropdownOpen] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [user, setUser] = useState<UserProfile | null>(null)
+  const [ownedMachines, setOwnedMachines] = useState<MachineDetail[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Mock user data
-  const user = {
-    username: 'john_doe',
-    email: 'john@example.com',
-    accountType: 'admin',
-    owned: [
-      { id: 1, name: 'HV-Example-1', type: 'hypervisor' },
-      { id: 2, name: 'HV-Example-2', type: 'hypervisor' },
-      { id: 3, name: 'VM-Production-1', type: 'virtual machine' },
-      { id: 4, name: 'VM-Dev-1', type: 'virtual machine' },
-    ],
+  useEffect(() => {
+    loadUserData()
+  }, [])
+
+  const loadUserData = async () => {
+    try {
+      const profileResponse = await authApi.getProfile()
+      if (profileResponse.data) {
+        setUser(profileResponse.data)
+        
+        // Load owned machines
+        const machines = await machineApi.listMachines()
+        setOwnedMachines(machines.filter(m => m.Owner_ID === profileResponse.data.User_ID))
+      }
+    } catch (err) {
+      console.error('Failed to load user data:', err)
+      router.push('/login')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleLogout = () => {
+    removeToken()
     router.push('/login')
   }
 
-  const handleDeleteAccount = () => {
-    setShowDeleteConfirm(false)
-    // Handle account deletion
-    router.push('/login')
+  const handleDeleteAccount = async () => {
+    try {
+      await authApi.deleteProfile()
+      removeToken()
+      router.push('/login')
+    } catch (err) {
+      console.error('Failed to delete account:', err)
+      setShowDeleteConfirm(false)
+    }
   }
 
   return (
@@ -61,31 +80,13 @@ export default function AccountPage() {
             </label>
             <div className="flex items-center justify-between">
               <p className="text-xl font-medium text-foreground">
-                {user.username}
+                {loading ? 'Loading...' : user?.Username || 'N/A'}
               </p>
               <button
                 onClick={() => router.push('/account/change-username')}
                 className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-accent transition-colors font-semibold"
               >
                 Change Username
-              </button>
-            </div>
-          </div>
-
-          {/* Email */}
-          <div className="mb-8">
-            <label className="block text-sm font-semibold text-muted-foreground mb-3">
-              Email Address
-            </label>
-            <div className="flex items-center justify-between">
-              <p className="text-xl font-medium text-foreground">
-                {user.email}
-              </p>
-              <button
-                onClick={() => router.push('/account/change-email')}
-                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-accent transition-colors font-semibold"
-              >
-                Change Email
               </button>
             </div>
           </div>
@@ -121,12 +122,12 @@ export default function AccountPage() {
             <div
               className="inline-block px-4 py-2 rounded-lg font-bold"
               style={{
-                backgroundColor: user.accountType === 'admin' ? '#3b82f6' : '#2d2535',
-                color: user.accountType === 'admin' ? '#ffffff' : '#a0a0a0',
+                backgroundColor: user?.Admin_Status ? '#3b82f6' : '#2d2535',
+                color: user?.Admin_Status ? '#ffffff' : '#a0a0a0',
                 textTransform: 'capitalize',
               }}
             >
-              {user.accountType}
+              {user?.Admin_Status ? 'admin' : 'standard'}
             </div>
           </div>
 
@@ -142,7 +143,7 @@ export default function AccountPage() {
                 onClick={() => setIsOwnedDropdownOpen(!isOwnedDropdownOpen)}
                 className="w-full px-4 py-3 rounded-lg flex items-center justify-between bg-input border border-border text-foreground hover:border-primary transition-colors font-medium"
               >
-                <span>{user.owned.length} resources</span>
+                <span>{ownedMachines.length} resources</span>
                 <ChevronDown
                   size={20}
                   style={{
@@ -156,21 +157,27 @@ export default function AccountPage() {
                 <div
                   className="absolute top-12 left-0 right-0 rounded-lg shadow-xl z-10 max-h-60 overflow-y-auto bg-secondary border border-border"
                 >
-                  {user.owned.map((resource, index) => (
-                    <button
-                      key={resource.id}
-                      onClick={() => {
-                        const path = resource.type === 'hypervisor' ? `/hv/${resource.id}` : `/vm/${resource.id}`
-                        router.push(path)
-                      }}
-                      className="w-full px-4 py-4 text-sm border-b last:border-b-0 border-border text-left hover:bg-primary/10 transition-colors"
-                    >
-                      <div className="text-foreground font-medium">{resource.name}</div>
-                      <div className="text-muted-foreground text-xs mt-1">
-                        {resource.type}
-                      </div>
-                    </button>
-                  ))}
+                  {ownedMachines.length === 0 ? (
+                    <div className="px-4 py-4 text-sm text-muted-foreground text-center">
+                      No owned resources
+                    </div>
+                  ) : (
+                    ownedMachines.map((machine) => (
+                      <button
+                        key={machine.Machine_ID}
+                        onClick={() => {
+                          const path = machine.Is_Hypervisor ? `/hv/${machine.Hostname}` : `/vm/${machine.Hostname}`
+                          router.push(path)
+                        }}
+                        className="w-full px-4 py-4 text-sm border-b last:border-b-0 border-border text-left hover:bg-primary/10 transition-colors"
+                      >
+                        <div className="text-foreground font-medium">{machine.Hostname}</div>
+                        <div className="text-muted-foreground text-xs mt-1">
+                          {machine.Is_Hypervisor ? 'Hypervisor' : 'Virtual Machine'}
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
               )}
             </div>

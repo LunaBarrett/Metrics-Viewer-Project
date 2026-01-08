@@ -6,17 +6,26 @@ import logging
 import os
 import json
 
-# --- CONFIGURABLE VARIABLES ---
-SEND_INTERVAL_SECONDS = 5    # How often to send metrics (seconds)
-FOREVER = True               # If True, send metrics forever; if False, send for DURATION_SECONDS
-DURATION_SECONDS = 60        # Only used if FOREVER is False
+# --- CONFIGURABLE VARIABLES (override via environment variables) ---
+#
+# IMPORTANT for Option B deployments:
+# - Nginx listens on HTTPS :5000, which can complicate local test generation (certs).
+# - Use BASE_URL=http://127.0.0.1:5002 to talk directly to Gunicorn.
+#
+BASE_URL = os.environ.get("METRICS_BASE_URL", "http://127.0.0.1:5002").rstrip("/")
 
-NUM_HVS = 10                 # Number of hypervisors to simulate
-VMS_PER_HV = 5               # Number of VMs per hypervisor
+SEND_INTERVAL_SECONDS = int(os.environ.get("METRICS_SEND_INTERVAL_SECONDS", "5"))
+FOREVER = os.environ.get("METRICS_FOREVER", "true").lower() in ("1", "true", "yes", "y")
+DURATION_SECONDS = int(os.environ.get("METRICS_DURATION_SECONDS", "60"))
 
-REGISTER_ENDPOINT = "http://localhost:5000/api/gathering/register_machine"
-METRICS_ENDPOINT = "http://localhost:5000/api/gathering/metrics"
-LOGGING_API_ENDPOINT = "http://localhost:5000/api/logging/frontend_log"  # Backend logging API endpoint
+NUM_HVS = int(os.environ.get("METRICS_NUM_HVS", "10"))
+VMS_PER_HV = int(os.environ.get("METRICS_VMS_PER_HV", "5"))
+
+REGISTER_ENDPOINT = os.environ.get("METRICS_REGISTER_ENDPOINT", f"{BASE_URL}/api/gathering/register_machine")
+METRICS_ENDPOINT = os.environ.get("METRICS_METRICS_ENDPOINT", f"{BASE_URL}/api/gathering/metrics")
+LOGGING_API_ENDPOINT = os.environ.get(
+    "METRICS_LOGGING_API_ENDPOINT", f"{BASE_URL}/api/logging/frontend_log"
+)  # Backend logging API endpoint
 
 # --- Logging Setup ---
 # Ensure logs directory exists

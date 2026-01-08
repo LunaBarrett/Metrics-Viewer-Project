@@ -26,7 +26,7 @@ def test_send_metrics(client):
         'hostname': 'test-vm',
         'timestamp': '2023-01-01T00:00:00Z',
         'current_cpu_usage': 50.0,
-        'current_memory_usage': {'total': 8 * 1024*3, 'used': 4 * 1024*3, 'percent': 50.0},
-        'current_disk_usage': [{'mountpoint': '/', 'total': 100 * 1024*3, 'used': 50 * 1024*3, 'percent': 50.0}]
+        'current_memory_usage': {'total': 8 * 1024**3, 'used': 4 * 1024**3, 'percent': 50.0},
+        'current_disk_usage': [{'mountpoint': '/', 'total': 100 * 1024**3, 'used': 50 * 1024**3, 'percent': 50.0}]
     })
     assert response.status_code == 201

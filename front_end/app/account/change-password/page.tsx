@@ -11,10 +11,26 @@ export default function ChangePasswordPage() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle password change
-    router.push('/account')
+    
+    if (newPassword !== confirmPassword) {
+      alert('Passwords do not match')
+      return
+    }
+
+    if (newPassword.length < 6) {
+      alert('Password must be at least 6 characters')
+      return
+    }
+
+    try {
+      const { authApi } = await import('@/lib/api')
+      await authApi.updatePassword(newPassword)
+      router.push('/account')
+    } catch (err: any) {
+      alert(err.message || 'Failed to update password')
+    }
   }
 
   return (

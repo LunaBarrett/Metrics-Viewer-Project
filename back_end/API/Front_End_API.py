@@ -7,9 +7,23 @@ from back_end.database.models import db, UserProfile, MachineDetail, SavedDashbo
 from collections import defaultdict
 import bcrypt
 import time
+import json
+from datetime import datetime, timezone
 
 # Create a Blueprint for the API
 front_end_api = Blueprint('front_end_api', __name__)
+
+def _get_current_user_id():
+    """
+    flask_jwt_extended may return identity as a string depending on configuration/version.
+    Also, some versions require JWT 'sub' to be a string (RFC compliance).
+    We store user IDs as integers, so normalize here.
+    """
+    raw = get_jwt_identity()
+    try:
+        return int(raw)
+    except Exception:
+        return None
 
 # Create an admin required decorator
 def admin_required(fn):
@@ -97,7 +111,8 @@ def login():
     FAILED_LOGIN_ATTEMPTS[username] = 0
     LOCKOUT_INFO[username] = {"count": 0, "until": 0}
     access_token = create_access_token(
-        identity=user.User_ID,
+        # Some environments require JWT subject ('sub') to be a string.
+        identity=str(user.User_ID),
         additional_claims={"admin": user.Admin_Status}
     )
     return jsonify({"status": "success", "access_token": access_token}), 200
@@ -115,7 +130,9 @@ def profile_endpoint():
     - PUT: Change password (securely hashed)
     - DELETE: Delete profile
     """
-    user_id = get_jwt_identity()
+    user_id = _get_current_user_id()
+    if user_id is None:
+        return jsonify({"status": "error", "message": "Invalid token identity"}), 422
     user = UserProfile.query.get(user_id)
     if not user:
         return jsonify({"status": "error", "message": "User not found"}), 404
@@ -204,7 +221,9 @@ def admin_delete_user(user_id):
 @jwt_required()
 def list_machines():
     claims = get_jwt()
-    user_id = get_jwt_identity()
+    user_id = _get_current_user_id()
+    if user_id is None:
+        return jsonify({"status": "error", "message": "Invalid token identity"}), 422
     if claims.get("admin"):
         # Admin: return all machines
         machines = MachineDetail.query.all()
@@ -254,12 +273,100 @@ def get_latest_metrics(hostname):
     metric = MachineMetric.query.filter_by(Machine_ID=machine.Machine_ID).order_by(MachineMetric.Timestamp.desc()).first()
     if not metric:
         return jsonify({"status": "error", "message": "No metrics found"}), 404
+    # Serialize Timestamp to ISO8601 string for JSON compatibility
+    timestamp_str = metric.Timestamp.isoformat() if hasattr(metric.Timestamp, 'isoformat') else str(metric.Timestamp)
     return jsonify({
-        "Timestamp": metric.Timestamp,
+        "Timestamp": timestamp_str,
         "Current_CPU_Usage": metric.Current_CPU_Usage,
         "Current_Memory_Usage": json.loads(metric.Current_Memory_Usage),
         "Current_Disk_Usage": json.loads(metric.Current_Disk_Usage)
     })
+
+
+def _parse_iso8601(dt_str: str):
+    """
+    Parse ISO8601 timestamps from query params.
+    Supports a trailing 'Z' (UTC).
+    Returns a timezone-aware datetime when possible.
+    """
+    if not dt_str:
+        return None
+    try:
+        if dt_str.endswith("Z"):
+            # Convert Zulu to explicit offset for fromisoformat
+            return datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+        return datetime.fromisoformat(dt_str)
+    except Exception:
+        return None
+
+
+def _safe_json_loads(value):
+    if value is None:
+        return None
+    try:
+        return json.loads(value)
+    except Exception:
+        return None
+
+
+# --- Get Metrics History for a Machine ---
+@front_end_api.route('/api/front_end/machine/info/<hostname>/metrics/history', methods=['GET'])
+@jwt_required()
+def get_metrics_history(hostname):
+    """
+    Returns a list of metrics rows for charting.
+
+    Query params (all optional):
+      - start: ISO8601 (inclusive)
+      - end: ISO8601 (inclusive)
+      - after: ISO8601 (alias for start; inclusive)
+      - before: ISO8601 (alias for end; inclusive)
+      - limit: max number of rows (default 120, max 2000)
+      - order: 'asc' or 'desc' (default 'asc' -> oldest to newest)
+    """
+    machine = MachineDetail.query.filter_by(Hostname=hostname).first()
+    if not machine:
+        return jsonify({"status": "error", "message": "Machine not found"}), 404
+
+    start_str = request.args.get("start") or request.args.get("after")
+    end_str = request.args.get("end") or request.args.get("before")
+    start_dt = _parse_iso8601(start_str) if start_str else None
+    end_dt = _parse_iso8601(end_str) if end_str else None
+
+    order = (request.args.get("order") or "asc").lower()
+    if order not in ("asc", "desc"):
+        return jsonify({"status": "error", "message": "Invalid 'order' (must be 'asc' or 'desc')"}), 400
+
+    try:
+        limit = int(request.args.get("limit") or 120)
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid 'limit' (must be an integer)"}), 400
+    limit = max(1, min(limit, 2000))
+
+    q = MachineMetric.query.filter_by(Machine_ID=machine.Machine_ID)
+    if start_dt:
+        q = q.filter(MachineMetric.Timestamp >= start_dt)
+    if end_dt:
+        q = q.filter(MachineMetric.Timestamp <= end_dt)
+
+    q = q.order_by(MachineMetric.Timestamp.asc() if order == "asc" else MachineMetric.Timestamp.desc())
+    metrics = q.limit(limit).all()
+
+    return jsonify({
+        "status": "success",
+        "Hostname": machine.Hostname,
+        "Machine_ID": machine.Machine_ID,
+        "count": len(metrics),
+        "metrics": [
+            {
+                "Timestamp": m.Timestamp.isoformat() if hasattr(m.Timestamp, "isoformat") else str(m.Timestamp),
+                "Current_CPU_Usage": m.Current_CPU_Usage,
+                "Current_Memory_Usage": _safe_json_loads(m.Current_Memory_Usage),
+                "Current_Disk_Usage": _safe_json_loads(m.Current_Disk_Usage),
+            }
+            for m in metrics
+        ],
+    }), 200
 
 
 # Dashboard related endpoints
@@ -268,7 +375,9 @@ def get_latest_metrics(hostname):
 @front_end_api.route('/api/front_end/dashboard', methods=['GET', 'POST', 'PUT'])
 @jwt_required()
 def dashboard_view_endpoint():
-    user_id = get_jwt_identity()
+    user_id = _get_current_user_id()
+    if user_id is None:
+        return jsonify({"status": "error", "message": "Invalid token identity"}), 422
     user = UserProfile.query.get(user_id)
 
     if request.method == 'GET':

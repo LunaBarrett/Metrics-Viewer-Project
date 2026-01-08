@@ -37,7 +37,26 @@ def register_machine():
 
     db.session.commit()
 
-    # Optionally: Update VM-HV relationships here using vm_list
+    # Update VM-HV relationships when a hypervisor registers with a vm_list
+    # The frontend expects VMs to have Hosted_On_ID pointing to their HV Machine_ID.
+    if is_hypervisor and isinstance(vm_list, list) and vm_list:
+        for vm_hostname in vm_list:
+            if not vm_hostname:
+                continue
+            vm = MachineDetail.query.filter_by(Hostname=vm_hostname).first()
+            if not vm:
+                vm = MachineDetail(
+                    Hostname=vm_hostname,
+                    Platform=platform,
+                    Is_Hypervisor=False,
+                    Hosted_On_ID=machine.Machine_ID,
+                )
+                db.session.add(vm)
+            else:
+                vm.Hosted_On_ID = machine.Machine_ID
+                # Don't accidentally mark VMs as HVs
+                vm.Is_Hypervisor = False
+        db.session.commit()
 
     return jsonify({"status": "success", "message": "Machine registered/updated"}), 201
 

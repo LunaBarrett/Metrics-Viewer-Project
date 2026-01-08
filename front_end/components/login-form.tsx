@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
+import { authApi, setToken } from '@/lib/api'
 
 export function LoginForm() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
 
@@ -21,14 +22,11 @@ export function LoginForm() {
     setIsLoading(true)
 
     try {
-      // TODO: Replace with actual authentication logic
-      // This will redirect to the landing page after login
-      setTimeout(() => {
-        router.push('/')
-        setIsLoading(false)
-      }, 1000)
-    } catch (err) {
-      setError('Invalid email or password')
+      const response = await authApi.login({ username, password })
+      setToken(response.access_token)
+      router.push('/')
+    } catch (err: any) {
+      setError(err.message || 'Invalid username or password')
       setIsLoading(false)
     }
   }
@@ -50,17 +48,17 @@ export function LoginForm() {
           </div>
         )}
 
-        {/* Email Input */}
+        {/* Username Input */}
         <div className="space-y-2">
-          <Label htmlFor="email" className="text-sm font-semibold text-foreground">
-            Email Address
+          <Label htmlFor="username" className="text-sm font-semibold text-foreground">
+            Username
           </Label>
           <Input
-            id="email"
-            type="email"
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            id="username"
+            type="text"
+            placeholder="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             required
             disabled={isLoading}
             className="h-11 bg-input border-border text-foreground placeholder-muted-foreground"

@@ -1,43 +1,23 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Power, ArrowLeft } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import DashboardHeader from '@/components/dashboard-header'
 import { ViewModeToggle } from '@/components/view-mode-toggle'
 import { InfoCard } from '@/components/info-card'
+import { machineApi, removeToken, type MachineDetail, type MachineMetrics } from '@/lib/api'
 
-interface VM {
-  id: string
-  name: string
-  status: 'running' | 'stopped' | 'paused'
-  cpu: number
-  memory: number
-  storage: number
-  hostHV: string
-  owner: string
-  os: string
-  allocatedCpu: number
-  allocatedMemory: number
-  allocatedStorage: number
-  totalHostCpu: number
-  totalHostMemory: number
-  totalHostStorage: number
-}
+// Convert bytes to GB
+const bytesToGB = (bytes: number) => Math.round(bytes / (1024 ** 3))
 
-// Mock data
-const mockVMs: VM[] = [
-  { id: 'v1', name: 'VM1', status: 'running', cpu: 4, memory: 8, storage: 100, hostHV: 'HV-Example-1', owner: 'John Doe', os: 'Ubuntu 22.04', allocatedCpu: 4, allocatedMemory: 8, allocatedStorage: 100, totalHostCpu: 32, totalHostMemory: 128, totalHostStorage: 2000 },
-  { id: 'v2', name: 'VM2', status: 'stopped', cpu: 8, memory: 32, storage: 500, hostHV: 'HV-Example-1', owner: 'Jane Smith', os: 'CentOS 8', allocatedCpu: 8, allocatedMemory: 32, allocatedStorage: 500, totalHostCpu: 32, totalHostMemory: 128, totalHostStorage: 2000 },
-  { id: 'v3', name: 'VM3', status: 'running', cpu: 2, memory: 4, storage: 50, hostHV: 'HV-Example-1', owner: 'Bob Wilson', os: 'Windows Server 2022', allocatedCpu: 2, allocatedMemory: 4, allocatedStorage: 50, totalHostCpu: 32, totalHostMemory: 128, totalHostStorage: 2000 },
-]
+type ChartPoint = { time: string; value: number }
 
-const generateInitialGraphData = (baseValue: number) => {
-  return Array.from({ length: 12 }, (_, i) => ({
-    time: i,
-    value: Math.max(0, baseValue + (Math.random() - 0.5) * baseValue * 0.3),
-  }))
+const formatTime = (isoTs: string) => {
+  const d = new Date(isoTs)
+  if (Number.isNaN(d.getTime())) return isoTs
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
 function getStatusIcon(status: string) {
@@ -57,59 +37,104 @@ function getStatusIcon(status: string) {
 export default function VMDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const vmId = params.id as string
-  const vm = mockVMs.find(v => v.id === vmId)
-
-  const [viewModes, setViewModes] = useState<{ [key: string]: 'numbers' | 'graph' }>(() => {
-    const initialModes: { [key: string]: 'numbers' | 'graph' } = {}
-    if (vm) {
-      initialModes[`${vm.id}-cpu`] = 'graph'
-      initialModes[`${vm.id}-memory`] = 'graph'
-      initialModes[`${vm.id}-storage`] = 'graph'
-    }
-    return initialModes
-  })
-  const [graphData, setGraphData] = useState<{ [key: string]: any[] }>({})
-  const initializedRef = useRef(false)
+  const hostname = params.id as string // Treating id param as hostname
+  const [vm, setVm] = useState<MachineDetail | null>(null)
+  const [hostHV, setHostHV] = useState<MachineDetail | null>(null)
+  const [metrics, setMetrics] = useState<MachineMetrics | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [viewModes, setViewModes] = useState<{ [key: string]: 'numbers' | 'graph' }>({})
+  const [graphData, setGraphData] = useState<{ [key: string]: ChartPoint[] }>({})
 
   useEffect(() => {
-    if (!initializedRef.current && vm) {
-      initializedRef.current = true
-      const initialData: { [key: string]: any[] } = {}
-      initialData[`${vm.id}-cpu`] = generateInitialGraphData(vm.cpu)
-      initialData[`${vm.id}-memory`] = generateInitialGraphData(vm.memory)
-      initialData[`${vm.id}-storage`] = generateInitialGraphData(vm.storage)
-      setGraphData(initialData)
-    }
-  }, [vm?.id])
+    loadVMData()
+  }, [hostname])
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setGraphData(prevData => {
-        const newData = { ...prevData }
-        Object.keys(newData).forEach(key => {
-          if (newData[key] && newData[key].length > 0) {
-            const lastValue = newData[key][newData[key].length - 1].value
-            newData[key] = [
-              ...newData[key].slice(1),
-              {
-                time: newData[key][newData[key].length - 1].time + 1,
-                value: Math.max(0, lastValue + (Math.random() - 0.5) * lastValue * 0.2),
-              },
-            ]
+  const loadVMData = async () => {
+    try {
+      const vmData = await machineApi.getMachineInfo(hostname)
+      if (vmData.Is_Hypervisor) {
+        router.push('/vms')
+        return
+      }
+      setVm(vmData)
+      
+      // Load host HV if Hosted_On_ID is set
+      if (vmData.Hosted_On_ID) {
+        try {
+          const allMachines = await machineApi.listMachines()
+          const hv = allMachines.find(m => m.Machine_ID === vmData.Hosted_On_ID && m.Is_Hypervisor)
+          if (hv) {
+            setHostHV(hv)
           }
-        })
-        return newData
-      })
-    }, 2000)
+        } catch (err) {
+          console.error('Failed to load host HV:', err)
+        }
+      }
+      
+      // Load metrics
+      try {
+        const metricsData = await machineApi.getMachineMetrics(hostname)
+        setMetrics(metricsData)
+      } catch (err) {
+        console.error('Failed to load metrics:', err)
+      }
 
-    return () => clearInterval(interval)
-  }, [])
+      // Load metrics history for real charts (latest N points)
+      try {
+        const history = await machineApi.getMachineMetricsHistory(hostname, { limit: 60, order: 'desc' })
+        const chronological = history.metrics.slice().reverse()
+        setGraphData({
+          [`${vmData.Hostname}-cpu`]: chronological.map((m) => ({
+            time: formatTime(m.Timestamp),
+            value: Number(m.Current_CPU_Usage ?? 0),
+          })),
+          [`${vmData.Hostname}-memory`]: chronological.map((m) => ({
+            time: formatTime(m.Timestamp),
+            value: bytesToGB(Number(m.Current_Memory_Usage?.used ?? 0) || 0),
+          })),
+          [`${vmData.Hostname}-storage`]: chronological.map((m) => ({
+            time: formatTime(m.Timestamp),
+            value: bytesToGB(Number(m.Current_Disk_Usage?.[0]?.used ?? 0) || 0),
+          })),
+        })
+      } catch (err) {
+        console.error('Failed to load metrics history:', err)
+        setGraphData({
+          [`${vmData.Hostname}-cpu`]: [],
+          [`${vmData.Hostname}-memory`]: [],
+          [`${vmData.Hostname}-storage`]: [],
+        })
+      }
+      
+      // Initialize view modes
+      const initialModes: { [key: string]: 'numbers' | 'graph' } = {}
+      initialModes[`${vmData.Hostname}-cpu`] = 'graph'
+      initialModes[`${vmData.Hostname}-memory`] = 'graph'
+      initialModes[`${vmData.Hostname}-storage`] = 'graph'
+      setViewModes(initialModes)
+    } catch (err) {
+      console.error('Failed to load VM data:', err)
+      router.push('/vms')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen" style={{ backgroundColor: '#1a1625' }}>
+        <DashboardHeader isAdmin={false} />
+        <main className="px-6 py-8 text-center">
+          <p className="text-muted-foreground">Loading virtual machine...</p>
+        </main>
+      </div>
+    )
+  }
 
   if (!vm) {
     return (
       <div className="min-h-screen" style={{ backgroundColor: '#1a1625' }}>
-        <DashboardHeader isAdmin={true} />
+        <DashboardHeader isAdmin={false} />
         <main className="px-6 py-8 text-center">
           <p className="text-muted-foreground">Virtual machine not found</p>
         </main>
@@ -118,8 +143,13 @@ export default function VMDetailPage() {
   }
 
   const handleLogout = () => {
-    // TODO: Implement logout
+    removeToken()
+    router.push('/login')
   }
+  
+  const vmStatus = metrics?.Timestamp ? 
+    (new Date().getTime() - new Date(metrics.Timestamp).getTime() < 5 * 60 * 1000 ? 'running' : 'stopped') 
+    : 'stopped'
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#1a1625' }}>
@@ -136,28 +166,28 @@ export default function VMDetailPage() {
 
         <div className="mb-12">
           <div className="flex items-center gap-4 mb-4">
-            <h1 className="text-4xl font-bold text-foreground">{vm.name}</h1>
-            {getStatusIcon(vm.status)}
+            <h1 className="text-4xl font-bold text-foreground">{vm.Hostname}</h1>
+            {getStatusIcon(vmStatus)}
           </div>
-          <p className="text-muted-foreground text-sm">{vm.os}</p>
+          <p className="text-muted-foreground text-sm">{vm.Platform || 'Unknown'}</p>
         </div>
 
         <div className="grid grid-cols-3 gap-6 mb-12">
           <InfoCard
             label="Hosted On"
-            value={vm.hostHV}
-            onClick={() => router.push(`/hv/1`)}
+            value={hostHV?.Hostname || 'Unknown'}
+            onClick={hostHV ? () => router.push(`/hv/${hostHV.Hostname}`) : undefined}
           />
-          <InfoCard label="Owner" value={vm.owner} />
-          <InfoCard label="Operating System" value={vm.os} />
+          <InfoCard label="Platform" value={vm.Platform || 'Unknown'} />
+          <InfoCard label="Status" value={vmStatus} />
         </div>
 
         <div className="mb-12">
           <h2 className="text-2xl font-semibold text-foreground mb-6">Resource Allocation</h2>
           <div className="grid grid-cols-3 gap-6">
-            <InfoCard label="CPU Cores" value={`${vm.allocatedCpu} / ${vm.totalHostCpu}`} />
-            <InfoCard label="Memory" value={`${vm.allocatedMemory} / ${vm.totalHostMemory}GB`} />
-            <InfoCard label="Disk Space" value={`${vm.allocatedStorage} / ${vm.totalHostStorage}GB`} />
+            <InfoCard label="CPU Cores" value={`${vm.Max_Cores || 0} / ${hostHV?.Max_Cores || 0}`} />
+            <InfoCard label="Memory" value={`${bytesToGB(vm.Max_Memory || 0)} / ${bytesToGB(hostHV?.Max_Memory || 0)}GB`} />
+            <InfoCard label="Disk Space" value={`${bytesToGB(vm.Max_Disk || 0)} / ${bytesToGB(hostHV?.Max_Disk || 0)}GB`} />
           </div>
         </div>
 
@@ -169,18 +199,18 @@ export default function VMDetailPage() {
               <div className="flex items-center justify-between mb-4">
                 <p className="text-foreground text-sm font-bold">CPU USAGE</p>
                 <ViewModeToggle
-                  mode={viewModes[`${vm.id}-cpu`] || 'graph'}
+                  mode={viewModes[`${vm.Hostname}-cpu`] || 'graph'}
                   onToggle={() => setViewModes(prev => ({
                     ...prev,
-                    [`${vm.id}-cpu`]: prev[`${vm.id}-cpu`] === 'numbers' ? 'graph' : 'numbers'
+                    [`${vm.Hostname}-cpu`]: prev[`${vm.Hostname}-cpu`] === 'numbers' ? 'graph' : 'numbers'
                   }))}
                 />
               </div>
-              {viewModes[`${vm.id}-cpu`] === 'numbers' ? (
-                <p className="text-foreground text-3xl font-bold">{vm.cpu}</p>
+              {viewModes[`${vm.Hostname}-cpu`] === 'numbers' ? (
+                <p className="text-foreground text-3xl font-bold">{metrics?.Current_CPU_Usage?.toFixed(1) || vm.Max_Cores || 0}%</p>
               ) : (
                 <ResponsiveContainer width="100%" height={120}>
-                  <LineChart data={graphData[`${vm.id}-cpu`] || []}>
+                  <LineChart data={graphData[`${vm.Hostname}-cpu`] || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                     <XAxis dataKey="time" stroke="#a0a0a0" tick={{ fontSize: 10 }} />
                     <YAxis stroke="#a0a0a0" tick={{ fontSize: 10 }} />
@@ -196,18 +226,18 @@ export default function VMDetailPage() {
               <div className="flex items-center justify-between mb-4">
                 <p className="text-foreground text-sm font-bold">MEMORY USAGE</p>
                 <ViewModeToggle
-                  mode={viewModes[`${vm.id}-memory`] || 'graph'}
+                  mode={viewModes[`${vm.Hostname}-memory`] || 'graph'}
                   onToggle={() => setViewModes(prev => ({
                     ...prev,
-                    [`${vm.id}-memory`]: prev[`${vm.id}-memory`] === 'numbers' ? 'graph' : 'numbers'
+                    [`${vm.Hostname}-memory`]: prev[`${vm.Hostname}-memory`] === 'numbers' ? 'graph' : 'numbers'
                   }))}
                 />
               </div>
-              {viewModes[`${vm.id}-memory`] === 'numbers' ? (
-                <p className="text-foreground text-3xl font-bold">{vm.memory}GB</p>
+              {viewModes[`${vm.Hostname}-memory`] === 'numbers' ? (
+                <p className="text-foreground text-3xl font-bold">{metrics?.Current_Memory_Usage?.used ? bytesToGB(metrics.Current_Memory_Usage.used) : bytesToGB(vm.Max_Memory || 0)}GB</p>
               ) : (
                 <ResponsiveContainer width="100%" height={120}>
-                  <LineChart data={graphData[`${vm.id}-memory`] || []}>
+                  <LineChart data={graphData[`${vm.Hostname}-memory`] || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                     <XAxis dataKey="time" stroke="#a0a0a0" tick={{ fontSize: 10 }} />
                     <YAxis stroke="#a0a0a0" tick={{ fontSize: 10 }} />
@@ -223,18 +253,18 @@ export default function VMDetailPage() {
               <div className="flex items-center justify-between mb-4">
                 <p className="text-foreground text-sm font-bold">DISK USAGE</p>
                 <ViewModeToggle
-                  mode={viewModes[`${vm.id}-storage`] || 'graph'}
+                  mode={viewModes[`${vm.Hostname}-storage`] || 'graph'}
                   onToggle={() => setViewModes(prev => ({
                     ...prev,
-                    [`${vm.id}-storage`]: prev[`${vm.id}-storage`] === 'numbers' ? 'graph' : 'numbers'
+                    [`${vm.Hostname}-storage`]: prev[`${vm.Hostname}-storage`] === 'numbers' ? 'graph' : 'numbers'
                   }))}
                 />
               </div>
-              {viewModes[`${vm.id}-storage`] === 'numbers' ? (
-                <p className="text-foreground text-3xl font-bold">{vm.storage}GB</p>
+              {viewModes[`${vm.Hostname}-storage`] === 'numbers' ? (
+                <p className="text-foreground text-3xl font-bold">{metrics?.Current_Disk_Usage?.[0]?.used ? bytesToGB(metrics.Current_Disk_Usage[0].used) : bytesToGB(vm.Max_Disk || 0)}GB</p>
               ) : (
                 <ResponsiveContainer width="100%" height={120}>
-                  <LineChart data={graphData[`${vm.id}-storage`] || []}>
+                  <LineChart data={graphData[`${vm.Hostname}-storage`] || []}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                     <XAxis dataKey="time" stroke="#a0a0a0" tick={{ fontSize: 10 }} />
                     <YAxis stroke="#a0a0a0" tick={{ fontSize: 10 }} />

@@ -3,7 +3,8 @@
 import { useRouter, usePathname } from 'next/navigation'
 import { Search, User, Settings, Home, LogOut, Lock } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { authApi, removeToken, type UserProfile } from '@/lib/api'
 
 interface DashboardHeaderProps {
   searchQuery: string
@@ -18,19 +19,42 @@ export default function DashboardHeader({
   onSearchChange,
   onLogout,
   activeTab,
-  isAdmin = false,
+  isAdmin: propIsAdmin = false,
 }: DashboardHeaderProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(propIsAdmin)
+  const [user, setUser] = useState<UserProfile | null>(null)
 
   const isHome = pathname === '/'
   const isHVPage = pathname === '/hvs'
   const isVMPage = pathname === '/vms'
 
+  useEffect(() => {
+    // Load user profile to check admin status
+    const loadUser = async () => {
+      try {
+        const profileResponse = await authApi.getProfile()
+        if (profileResponse.data) {
+          setUser(profileResponse.data)
+          setIsAdmin(profileResponse.data.Admin_Status)
+        }
+      } catch (err) {
+        // Not logged in or error - will be handled by auth redirect
+      }
+    }
+    loadUser()
+  }, [])
+
   const handleLogout = () => {
     setIsDropdownOpen(false)
-    onLogout()
+    removeToken()
+    if (onLogout) {
+      onLogout()
+    } else {
+      router.push('/login')
+    }
   }
 
   const handleNavigate = (path: string) => {

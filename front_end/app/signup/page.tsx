@@ -7,13 +7,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card } from '@/components/ui/card'
+import { authApi, setToken } from '@/lib/api'
 
 export default function SignUpPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
+    username: '',
     password: '',
     confirmPassword: '',
   })
@@ -36,16 +36,27 @@ export default function SignUpPage() {
       return
     }
 
+    if (formData.username.length < 3) {
+      setError('Username must be at least 3 characters')
+      return
+    }
+
     setIsLoading(true)
 
     try {
-      // TODO: Replace with actual signup logic
-      setTimeout(() => {
-        router.push('/')
-        setIsLoading(false)
-      }, 1000)
-    } catch (err) {
-      setError('Failed to create account')
+      await authApi.register({
+        username: formData.username,
+        password: formData.password,
+      })
+      // After successful registration, log in automatically
+      const loginResponse = await authApi.login({
+        username: formData.username,
+        password: formData.password,
+      })
+      setToken(loginResponse.access_token)
+      router.push('/')
+    } catch (err: any) {
+      setError(err.message || 'Failed to create account')
       setIsLoading(false)
     }
   }
@@ -71,35 +82,17 @@ export default function SignUpPage() {
               </div>
             )}
 
-            {/* Full Name Input */}
+            {/* Username Input */}
             <div className="space-y-2">
-              <Label htmlFor="name" className="text-sm font-medium">
-                Full Name
+              <Label htmlFor="username" className="text-sm font-medium">
+                Username
               </Label>
               <Input
-                id="name"
+                id="username"
                 type="text"
-                name="name"
-                placeholder="John Doe"
-                value={formData.name}
-                onChange={handleChange}
-                required
-                disabled={isLoading}
-                className="h-10"
-              />
-            </div>
-
-            {/* Email Input */}
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-medium">
-                Email Address
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                name="email"
-                placeholder="you@example.com"
-                value={formData.email}
+                name="username"
+                placeholder="username"
+                value={formData.username}
                 onChange={handleChange}
                 required
                 disabled={isLoading}

@@ -1,6 +1,7 @@
 from flask import Flask
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 from back_end.database.models import db
 from back_end.API.Logging_API import setup_logging, logging_api
 from core.config import Config
@@ -19,6 +20,10 @@ def create_app():
 
     # For production, restrict CORS to your frontend domain:
     # CORS(app, resources={r"/api/*": {"origins": "https://your-frontend-domain.com"}})
+
+    # Add ProxyFix to handle X-Forwarded-* headers from Nginx
+    # This ensures Flask correctly interprets the original request protocol/headers
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
     # Initialise extensions
     db.init_app(app)

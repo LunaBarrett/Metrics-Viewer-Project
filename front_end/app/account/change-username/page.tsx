@@ -31,11 +31,14 @@ export default function ChangeUsernamePage() {
     }
 
     setIsLoading(true)
-    // Simulate API call
-    setTimeout(() => {
-      setIsLoading(false)
+    try {
+      const { authApi } = await import('@/lib/api')
+      await authApi.updateUsername(newUsername)
       router.push('/account')
-    }, 1500)
+    } catch (err: any) {
+      setError(err.message || 'Failed to update username')
+      setIsLoading(false)
+    }
   }
 
   return (
