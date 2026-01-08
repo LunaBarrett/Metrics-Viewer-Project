@@ -63,8 +63,9 @@ def register_machine(hostname, is_hypervisor=False, vm_list=None):
         "platform": "Linux-5.15.0",
         "is_hypervisor": is_hypervisor,
         "max_cores": random.randint(8, 32) if is_hypervisor else random.randint(2, 8),
-        "max_memory": random.randint(32, 128) * 1024*3 if is_hypervisor else random.randint(4, 32) * 1024*3,
-        "max_disk": random.randint(500, 2000) * 1024*3 if is_hypervisor else random.randint(50, 500) * 1024*3,
+        # Store sizes in BYTES (GiB) so the frontend's bytes->GB conversion works correctly.
+        "max_memory": random.randint(32, 128) * 1024**3 if is_hypervisor else random.randint(4, 32) * 1024**3,
+        "max_disk": random.randint(500, 2000) * 1024**3 if is_hypervisor else random.randint(50, 500) * 1024**3,
         "vm_list": vm_list if vm_list else []
     }
     try:
@@ -86,15 +87,16 @@ def send_metrics(hostname, is_hypervisor=False):
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "current_cpu_usage": random.uniform(0, 100),
         "current_memory_usage": {
-            "total": random.randint(32, 128) * 1024*3 if is_hypervisor else random.randint(4, 32) * 1024*3,
-            "used": random.randint(1, 127) * 1024*3 if is_hypervisor else random.randint(1, 31) * 1024*3,
+            # Values in BYTES (GiB) so UI displays non-zero GB.
+            "total": random.randint(32, 128) * 1024**3 if is_hypervisor else random.randint(4, 32) * 1024**3,
+            "used": random.randint(1, 127) * 1024**3 if is_hypervisor else random.randint(1, 31) * 1024**3,
             "percent": random.uniform(0, 100)
         },
         "current_disk_usage": [
             {
                 "mountpoint": "/",
-                "total": random.randint(500, 2000) * 1024*3 if is_hypervisor else random.randint(50, 500) * 1024*3,
-                "used": random.randint(10, 1500) * 1024*3 if is_hypervisor else random.randint(10, 400) * 1024*3,
+                "total": random.randint(500, 2000) * 1024**3 if is_hypervisor else random.randint(50, 500) * 1024**3,
+                "used": random.randint(10, 1500) * 1024**3 if is_hypervisor else random.randint(10, 400) * 1024**3,
                 "percent": random.uniform(0, 100)
             }
         ]
